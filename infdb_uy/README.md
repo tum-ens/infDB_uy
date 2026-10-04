@@ -13,8 +13,8 @@ Preparing Uruguayan open data for the [InfDB](https://github.com/tum-ens/InfDB) 
 Requirements: [Docker](https://docs.docker.com/get-docker/) with Compose, about 5 GB of free disk space, and an internet connection.
 
 ```bash
-git clone <repository-url> infdb_uy
-cd infdb_uy
+git clone git@github.com:tum-ens/infDB_uy.git
+cd infDB_uy/infdb_uy
 docker compose up --build
 ```
 

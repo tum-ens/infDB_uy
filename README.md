@@ -19,7 +19,8 @@ The InfDB adaptation itself is **not** implemented yet.
 ## Start
 
 ```bash
-cd infdb_uy
+git clone git@github.com:tum-ens/infDB_uy.git
+cd infDB_uy/infdb_uy
 docker compose up --build      # first run ≈ 10 min, downloads ≈ 1.5 GB
 ```
 
