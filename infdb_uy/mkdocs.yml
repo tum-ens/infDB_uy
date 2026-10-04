@@ -1,0 +1,29 @@
+site_name: "InfDB Uruguay"
+site_description: "Data sources, comparison with InfDB and adaptation plan for applying the InfDB pipeline to Uruguay, starting with a pilot in Montevideo (Cordón)."
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.path
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+nav:
+  - Summary (TL;DR):
+      - English: tldr.md
+      - Deutsch: tldr.de.md
+      - Español: tldr.es.md
+  - Overview: index.md
+  - Data sources: data-sources.md
+  - Comparison with InfDB: infdb-comparison.md
+  - Required changes: required-changes.md
+  - Pilot – Cordón (Montevideo): pilot-cordon.md
+  - Pipeline: pipeline.md
+  - Dashboard: dashboard.md
+  - Reference – Catastro bulk schema: reference-dnc-schema.md

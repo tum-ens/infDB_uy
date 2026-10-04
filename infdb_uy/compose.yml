@@ -1,0 +1,18 @@
+# Single command:  docker compose up --build
+# Then open http://localhost:8050
+services:
+  explorer:
+    build: .
+    image: infdb-uy:latest
+    container_name: infdb-uy
+    ports:
+      - "8050:8050"
+    volumes:
+      # downloaded and prepared data stay on the host (./data), so restarts are fast
+      - ./data:/app/data
+      # the config can be edited without rebuilding the image
+      - ./config:/app/config:ro
+    # write files as the host user (Linux); override with UID/GID if yours differ
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - HOME=/tmp

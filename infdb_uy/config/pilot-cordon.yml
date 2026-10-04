@@ -1,0 +1,86 @@
+# Pilot configuration: Cordón (Montevideo)
+#
+# Rules for this pipeline:
+#   * raw/       – files exactly as downloaded, never modified (see raw/manifest.jsonl)
+#   * prepared/  – only lossless transformations: official column names, official code
+#                  labels added next to the raw code, keys, reprojection, clipping to scope.
+#                  No row is dropped, corrected, imputed or reclassified.
+#   * reports/   – observations about the data (QA). Nothing in reports/ changes data.
+
+name: uy-mvd-cordon
+crs: "EPSG:32721"            # WGS 84 / UTM 21S, native CRS of DNC and IM data
+data_dir: data               # relative to the project root
+
+scope:
+  # The scope polygon is the official IM barrio polygon, used as published.
+  source: im_wfs
+  layer: "mapstore-tematicas:zon_v_sig_barrios"
+  field: barrio
+  values: ["CORDON"]
+  dnc_departamento: "V"      # DNC department letter (Montevideo)
+  dnc_localidad: "AA"        # DNC localidad code (Montevideo)
+  ine_departamento: "01"     # INE department code (Montevideo)
+
+sources:
+  dnc_padrones:
+    enabled: true
+    # CKAN dataset; the newest monthly resource is selected unless `release` is set (e.g. "2026-09")
+    ckan: "https://catalogodatos.gub.uy/api/3/action/package_show?id=direccion-nacional-de-catastro-padrones-urbanos-y-rurales"
+    release: null
+  dnc_parcelario:
+    enabled: true
+    url: "https://catalogodatos.gub.uy/dataset/9e0dc092-a669-4697-b3ba-88808165c902/resource/3d211675-14a6-4e69-bc0b-6cc549060633/download/paisurbano_shp.zip"
+  im_wfs:
+    enabled: true
+    endpoint: "https://montevideo.gub.uy/app/geoserver/ows"
+    page_size: 5000
+    layers:
+      parcelas: "mapstore-base:cb_v_mdg_parcelas_citim"
+      accesos_puerta: "mapstore-base:cb_v_mdg_accesos_puerta"
+      vias: "mapstore-base:cb_v_sig_vias"
+      zonas_censales_2023: "mapstore-tematicas:icen_poblacion_23"
+      permisos_construccion: "mapstore-tematicas:ic_v_ce_permisos_construccion_geom"
+      manzanas: "mapstore-tematicas:ic_v_mdg_manzanas"
+      barrios: "mapstore-tematicas:zon_v_sig_barrios"
+      municipios: "mapstore-tematicas:zon_v_sig_municipios"
+      lidar_index: "mapstore-tematicas:fa_sig_lidar2024_v4"
+  im_lidar:
+    enabled: true
+    index_layer: lidar_index # tiles whose polygon intersects the scope polygon
+    url_field: enlace_lid
+    sheet_field: HOJA
+  ine_cartografia:
+    enabled: true
+    url: "https://www5.ine.gub.uy/documents/CENSO%202023/Cartografia/Mayo2026/gpck.zip"
+  ine_diccionario:
+    enabled: true
+    url: "https://www5.ine.gub.uy/documents/CENSO%202023/Microdatos/Diccionario%20de%20variables%202023.xlsx"
+  ine_anda:
+    enabled: true
+    api: "https://www4.ine.gub.uy/Anda5/index.php/api"
+    catalog_page: "https://www4.ine.gub.uy/Anda5/index.php/catalog"
+    studies:
+      # July 2026 weighted census microdata (contains SECCION/SEGMENTO, weight W)
+      - idno: "URY-INE-CVPH-2023"
+        id: 781
+        # Column names in the microdata used to select records in scope. The finest level
+        # available is used: segmento (INE CODSEG) > seccion (CODSECC) > departamento.
+        geography: {departamento: DEPARTAMENTO, seccion: SECCION, segmento: SEGMENTO}
+      # Encuesta Continua de Hogares 2023
+      - idno: "URY-INE-ECH-2023-v01"
+        id: 735
+        geography: {departamento: dpto, seccion: secc}
+    # Microdata files are only obtainable after accepting INE's terms and conditions on
+    # the catalog page. Place the downloaded files (any of .csv/.sav/.dta/.zip/.rar/.7z)
+    # in  data/raw/ine_anda/<idno>/files/  and run `infdb-uy anda-ingest`.
+
+dashboard:
+  # 3D view of the explorer (illustration only, not data): parcel polygons are extruded to
+  # (highest above-ground floor level + 1) x this assumed storey height.
+  visual_storey_height_m: 3.0
+
+tls:
+  # www4/www5.ine.gub.uy do not send their intermediate certificate.
+  # It is fetched from the AIA URL below and appended to the certifi bundle.
+  extra_intermediates:
+    - "http://crt.sectigo.com/SectigoPublicServerAuthenticationCADVR36.crt"

@@ -1,0 +1,8 @@
+# downloaded and generated data (may contain INE microdata – never commit)
+infdb_uy/data/*
+!infdb_uy/data/README.md
+.venv/
+__pycache__/
+site/
+_site_tmp/
+*.part

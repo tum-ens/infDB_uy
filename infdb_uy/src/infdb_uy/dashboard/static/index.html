@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>InfDB Uruguay Data Explorer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect x=%221%22 y=%221%22 width=%226%22 height=%226%22 fill=%22%231d6b80%22/%3E%3Crect x=%229%22 y=%221%22 width=%226%22 height=%2210%22 fill=%22%2373afcb%22/%3E%3Crect x=%221%22 y=%229%22 width=%226%22 height=%226%22 fill=%22%2373afcb%22/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/vendor/maplibre-gl.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>InfDB Uruguay · Data Explorer</h1>
+    <small id="subtitle" data-i18n="common.loading">Loading…</small>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="overview" aria-selected="true" data-i18n="tab.overview">Overview</button>
+    <button role="tab" data-tab="cadastre" data-i18n="tab.cadastre">Cadastre</button>
+    <button role="tab" data-tab="census" data-i18n="tab.census">Census</button>
+    <button role="tab" data-tab="lidar" data-i18n="tab.lidar">LiDAR</button>
+    <button role="tab" data-tab="data" data-i18n="tab.data">Data</button>
+  </nav>
+  <div class="header-right">
+    <a class="btn" href="/api/docs" target="_blank" rel="noopener">API</a>
+    <select id="lang" class="btn" aria-label="Language" data-i18n-title="lang.title">
+      <option value="en">EN · English</option><option value="de">DE · Deutsch</option><option value="es">ES · Español</option>
+    </select>
+    <button class="btn" id="theme" data-i18n-title="btn.theme.title" data-i18n="btn.theme">Theme</button>
+  </div>
+</header>
+
+<main>
+  <!-- OVERVIEW -->
+  <section class="tab active" id="tab-overview">
+    <div class="page"><div class="page-inner" id="overview"><p class="loading" data-i18n="ov.loading">Loading overview…</p></div></div>
+  </section>
+
+  <!-- CADASTRE -->
+  <section class="tab" id="tab-cadastre">
+    <aside class="panel" id="cad-panel">
+      <div>
+        <h3 data-i18n="cad.selection">Selection</h3>
+        <div class="kpis small" id="cad-kpis"></div>
+        <div class="chips" id="cad-chips" style="margin-top:8px"></div>
+      </div>
+      <div>
+        <h3 data-i18n="cad.year">Construction year (per line)</h3>
+        <div id="cad-decade"></div>
+        <label class="switch" style="margin-top:6px"><input type="checkbox" id="cad-year0" checked> <span data-i18n="cad.year0">include lines with year 0</span></label>
+      </div>
+      <div><h3 data-i18n="cad.destino">Use (destino)</h3><div id="cad-destino"></div></div>
+      <div><h3 data-i18n="cad.categoria">Construction category</h3><div id="cad-categoria"></div></div>
+      <div><h3 data-i18n="cad.estado">Conservation state</h3><div id="cad-estado"></div></div>
+      <div><h3 data-i18n="cad.cubierta">Roof type</h3><div id="cad-cubierta"></div></div>
+      <div><h3 data-i18n="cad.nivel">Floor level (nivel)</h3><div id="cad-nivel"></div></div>
+      <div><h3 data-i18n="cad.tipo_obra">Type of works</h3><div id="cad-tipo_obra"></div></div>
+      <div><h3 data-i18n="cad.regimen">Regime</h3><div id="cad-regimen"></div></div>
+      <div><h3 data-i18n="cad.unitreg">Parcel has a unit of the line's regime</h3><div id="cad-unit_regimen_exists"></div>
+        <p class="note" data-i18n="cad.unitreg.note">"no": the line's régimen has no unit record on the parcel (e.g. CO and PH lines on a parcel changing régimen). Summing both counts such buildings twice; filter to "yes" to avoid that.</p></div>
+      <p class="note" data-i18n="cad.panel.note">Bars show built area (m²) of construction lines. Click to filter; each chart ignores its own filter. Codes and labels exactly as published by DNC; empty label = code not in the DNC code table.</p>
+    </aside>
+    <div class="mapwrap">
+      <div class="map" id="cad-map"></div>
+      <div class="map-controls">
+        <div class="mc">
+          <label><span data-i18n="cad.colorby">Colour parcels by</span>
+            <select id="cad-color">
+              <option value="year_median_nonzero" data-i18n="cad.c.year">Median construction year (lines, year &gt; 0)</option>
+              <option value="nivel_max" data-i18n="cad.c.nivel">Highest floor level</option>
+              <option value="lines_area_m2" data-i18n="cad.c.area">Built area of all lines (m²)</option>
+              <option value="use_largest_area" data-i18n="cad.c.use">Use with largest area</option>
+              <option value="regimen_units" data-i18n="cad.c.regime">Regime of units</option>
+              <option value="n_units" data-i18n="cad.c.units">Number of cadastral units</option>
+              <option value="valor_total_sum" data-i18n="cad.c.value">Cadastral value, sum of units (UYU)</option>
+              <option value="n_lines_year_0" data-i18n="cad.c.year0">Lines with year 0 (QA)</option>
+              <option value="n_lines_regimen_without_unit" data-i18n="cad.c.regnounit">Lines without unit of same regime (QA)</option>
+            </select>
+          </label>
+          <div class="legend" id="cad-legend"></div>
+        </div>
+        <div class="mc layers" id="cad-layers"></div>
+        <div class="mc"><label><input type="checkbox" id="cad-3d"> <span data-i18n="cad.3d">3D view (illustrative)</span></label></div>
+      </div>
+      <div class="banner3d" id="cad-3d-banner" hidden><b data-i18n="cad.3d.badge">Illustration – assumption, not data</b><span id="cad-3d-text"></span></div>
+    </div>
+    <aside class="drawer" id="cad-drawer" hidden></aside>
+  </section>
+
+  <!-- CENSUS -->
+  <section class="tab" id="tab-census">
+    <aside class="panel" id="cen-panel"></aside>
+    <div class="mapwrap">
+      <div class="map" id="cen-map"></div>
+      <div class="map-controls">
+        <div class="mc">
+          <label><span data-i18n="cen.zones23">Census zones 2023</span>
+            <select id="cen-metric">
+              <option value="POB_TOT_23" data-i18n="cen.m.pop">Population</option>
+              <option value="VIV_TOT_23" data-i18n="cen.m.viv">Dwellings</option>
+              <option value="pop_ha" data-i18n="cen.m.popha">Population per ha</option>
+              <option value="viv_ha" data-i18n="cen.m.vivha">Dwellings per ha</option>
+              <option value="scope_overlap_share" data-i18n="cen.m.share">Share of zone inside scope</option>
+            </select>
+          </label>
+          <div class="legend" id="cen-legend"></div>
+        </div>
+        <div class="mc layers" id="cen-layers"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIDAR -->
+  <section class="tab" id="tab-lidar">
+    <aside class="panel" id="lid-panel" style="width:520px"></aside>
+    <div class="mapwrap"><div class="map" id="lid-map"></div></div>
+  </section>
+
+  <!-- DATA -->
+  <section class="tab" id="tab-data">
+    <div class="datawrap">
+      <div class="dslist" id="ds-list"><p class="loading" style="padding:14px" data-i18n="data.loading">Loading datasets…</p></div>
+      <div class="dsview" id="ds-view"><p class="empty" data-i18n="data.choose">Choose a dataset on the left.</p></div>
+    </div>
+  </section>
+</main>
+<div class="tip" id="tip"></div>
+
+<script src="/static/vendor/maplibre-gl.js"></script>
+<script src="/static/i18n.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
