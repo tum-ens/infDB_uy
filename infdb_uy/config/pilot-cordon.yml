@@ -70,6 +70,24 @@ sources:
       - idno: "URY-INE-ECH-2023-v01"
         id: 735
         geography: {departamento: dpto, seccion: secc}
+      # Encuesta Continua de Hogares 2025 (annual file has secc; monthly follow-up files only dpto)
+      - idno: "INE-ECH-2025"
+        id: 779
+        geography: {departamento: dpto, seccion: secc}
+      # Encuesta Nacional de Gastos e Ingresos de los Hogares 2016-17 (only department level)
+      - idno: "URY-INE-ENGIH-2016-v04"
+        id: 718
+        geography: {departamento: DOMDEPARTAMENTO}
+      # Censos 2011. Its section/segment codes refer to the 2011 census cartography, not the
+      # 2023 one used for the scope, so only the department level is used here.
+      - idno: "URY-INE-CPHV-2011-v02."
+        id: 243
+        geography: {departamento: DPTO}
+      # Directorio Micro, Pequeña y Mediana Empresa 2025 (addresses + CIIU activity).
+      # Its "Sección" column is the CIIU section, not a census section.
+      - idno: "DM2025."
+        id: 782
+        geography: {departamento: departam}
     # Microdata files are only obtainable after accepting INE's terms and conditions on
     # the catalog page. Place the downloaded files (any of .csv/.sav/.dta/.zip/.rar/.7z)
     # in  data/raw/ine_anda/<idno>/files/  and run `infdb-uy anda-ingest`.

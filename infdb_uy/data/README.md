@@ -8,4 +8,4 @@ Created by the pipeline (`infdb-uy all` / `docker compose up`). Not under versio
 - `dashboard/` – web layers for the explorer
 - `state/` – markers of completed pipeline steps
 
-INE ANDA microdata go into `raw/ine_anda/<idno>/files/` (see the README.txt there). Their terms of use forbid redistribution: never commit or share this folder.
+INE ANDA microdata go into `raw/ine_anda/<idno>/files/` (see the README.txt there and `docs/data-downloads.md`). Their terms of use forbid redistribution: never commit or share this folder.

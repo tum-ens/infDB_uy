@@ -21,6 +21,7 @@ Ingest is lossless:
 
 from __future__ import annotations
 
+import codecs
 import csv
 import io
 import json
@@ -41,7 +42,7 @@ from ..core import Context, write_json
 
 log = logging.getLogger(__name__)
 SOURCE = "ine_anda"
-TABLE_EXT = {".csv", ".txt", ".tab", ".sav", ".zsav", ".dta", ".parquet"}
+TABLE_EXT = {".csv", ".txt", ".tab", ".sav", ".zsav", ".dta", ".parquet", ".xlsx"}
 ARCHIVE_EXT = {".zip", ".rar", ".7z", ".gz", ".tgz", ".tar", ".bz2", ".xz"}
 
 README = """\
@@ -72,12 +73,24 @@ This folder is inside data/ and excluded from version control. Do not commit or 
 # ---------------------------------------------------------------------- metadata
 def _cached_json(ctx: Context, url: str, dest: Path) -> dict:
     if dest.exists() and not ctx.refresh:
-        return json.loads(dest.read_text(encoding="utf-8"))
-    r = ctx.session.get(url, timeout=120)
-    r.raise_for_status()
-    ctx.save_bytes(r.url, r.content, dest, SOURCE)
-    time.sleep(0.1)  # be gentle with the INE server
-    return r.json()
+        try:
+            return json.loads(dest.read_text(encoding="utf-8"))
+        except ValueError:
+            log.warning("Cached %s is not valid JSON – downloading it again", dest.name)
+    # The INE server occasionally appends a PHP error page to an otherwise valid response;
+    # such responses are not stored and the request is repeated.
+    for attempt in range(1, 4):
+        r = ctx.session.get(url, timeout=120)
+        r.raise_for_status()
+        time.sleep(0.1 * attempt)  # be gentle with the INE server
+        try:
+            obj = r.json()
+        except ValueError:
+            log.warning("%s: response is not valid JSON (attempt %d of 3)", url, attempt)
+            continue
+        ctx.save_bytes(r.url, r.content, dest, SOURCE)
+        return obj
+    raise RuntimeError(f"{url}: no valid JSON after 3 attempts")
 
 
 def _variable_rows(details: list[dict], files: dict[str, str]) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -149,7 +162,11 @@ def metadata(ctx: Context) -> dict:
 
 # ------------------------------------------------------------------------ ingest
 def _extract(archive: Path, target: Path) -> list[Path]:
-    """Unpack with libarchive (zip, rar, 7z, tar, ...). Returns extracted files."""
+    """Unpack with libarchive (zip, rar, 7z, tar, ...). Returns extracted files.
+
+    Only files the ingest can read are unpacked (e.g. no .dbf copies of .sav tables), and
+    files already unpacked with the same size are kept.
+    """
     out = []
     target.mkdir(parents=True, exist_ok=True)
     with libarchive.file_reader(str(archive)) as arc:
@@ -157,7 +174,13 @@ def _extract(archive: Path, target: Path) -> list[Path]:
             if entry.isdir:
                 continue
             rel = Path(*[p for p in Path(entry.pathname).parts if p not in ("..", "/")])
+            if rel.suffix.lower() not in TABLE_EXT:
+                log.info("%s: %s not unpacked (format not read by the ingest)", archive.name, rel)
+                continue
             dest = target / rel
+            if dest.exists() and dest.stat().st_size == entry.size:
+                out.append(dest)
+                continue
             dest.parent.mkdir(parents=True, exist_ok=True)
             with open(dest, "wb") as fh:
                 for block in entry.get_blocks():
@@ -167,12 +190,18 @@ def _extract(archive: Path, target: Path) -> list[Path]:
 
 
 def _sniff(path: Path) -> tuple[str, str]:
+    # The whole file is checked: some INE files are ASCII for the first megabytes and only
+    # later contain Latin-1 characters (e.g. ECH 2025, months 3-6).
+    dec = codecs.getincrementaldecoder("utf-8")()
+    enc = "utf-8"
+    with path.open("rb") as fh:
+        try:
+            while block := fh.read(1 << 24):
+                dec.decode(block)
+            dec.decode(b"", final=True)
+        except UnicodeDecodeError:
+            enc = "latin-1"
     head = path.open("rb").read(1 << 20)
-    try:
-        head.decode("utf-8")
-        enc = "utf-8"
-    except UnicodeDecodeError:
-        enc = "latin-1"
     sample = head.decode(enc, errors="replace")
     try:
         delim = csv.Sniffer().sniff(sample[:65536], delimiters=",;\t|").delimiter
@@ -199,6 +228,21 @@ def _text_to_parquet(path: Path, out: Path) -> dict:
             w.write_batch(batch)
             rows += batch.num_rows
     return {"format": "text", "encoding": enc, "delimiter": delim, "rows": rows, "columns": header}
+
+
+def _excel_to_parquet(path: Path, out: Path) -> dict:
+    """First sheet with data; every cell as text, as in the CSV reader. Other sheets are listed."""
+    sheets = pd.read_excel(path, sheet_name=None, dtype=str, header=None, keep_default_na=False)
+    name, df = next(((n, d) for n, d in sheets.items() if len(d)), next(iter(sheets.items())))
+    # Some sheets have empty or title rows above the header: the header is taken to be the
+    # first row with the most filled cells among the first 50 rows.
+    filled = (df.head(50) != "").sum(axis=1)
+    header_row = int(filled.idxmax())
+    df.columns = [str(c).strip() for c in df.iloc[header_row]]
+    df = df.iloc[header_row + 1:].reset_index(drop=True)
+    df.to_parquet(out, index=False)
+    return {"format": "xlsx", "sheet": name, "header_row": header_row + 1,
+            "other_sheets": [n for n in sheets if n != name], "rows": len(df), "columns": list(df.columns)}
 
 
 def _stat_to_parquet(path: Path, out: Path, labels_out: Path) -> dict:
@@ -328,14 +372,20 @@ def ingest(ctx: Context) -> dict:
         st_report = {"inputs": [p.name for p in inputs], "tables": {}}
         for t in tables:
             out = ctx.prepared(SOURCE, idno, f"{t.stem}.parquet")
-            if t.suffix.lower() in {".sav", ".zsav", ".dta"}:
+            info_cache = out.with_suffix(".info.json")
+            if out.exists() and info_cache.exists() and out.stat().st_mtime > t.stat().st_mtime:
+                info = json.loads(info_cache.read_text(encoding="utf-8"))  # converted before
+            elif t.suffix.lower() in {".sav", ".zsav", ".dta"}:
                 info = _stat_to_parquet(t, out, ctx.prepared(SOURCE, idno, f"{t.stem}__value_labels.parquet"))
+            elif t.suffix.lower() == ".xlsx":
+                info = _excel_to_parquet(t, out)
             elif t.suffix.lower() == ".parquet":
                 pq.write_table(pq.read_table(t), out)
                 info = {"format": "parquet", "rows": pq.read_metadata(out).num_rows, "columns": pq.read_schema(out).names}
             else:
                 info = _text_to_parquet(t, out)
 
+            write_json(info_cache, info)
             match = _match_file(t.stem, info["columns"], api_files, api_vars)
             fid = match["file_id"]
             info["catalogue_match"] = match

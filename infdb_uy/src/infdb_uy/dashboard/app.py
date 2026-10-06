@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import threading
 from collections import defaultdict
 from functools import lru_cache
@@ -33,6 +34,23 @@ FACETS = {
     "regimen": ("regimen", None),
     "unit_regimen_exists": ("unit_regimen_exists", None),
 }
+
+
+def network_urls(ctx: Context, port: int | None = None) -> dict:
+    """LAN URLs of the dashboard. In Docker the host's address comes from the netinfo service
+    (data/state/host_network.json); outside Docker it is determined directly."""
+    from ..netinfo import lan_ips
+
+    published = os.environ.get("PUBLISHED_PORT", "")  # "8050" or "127.0.0.1:8050"
+    port = int(published.rsplit(":", 1)[-1] or port or 8050)
+    in_docker = Path("/.dockerenv").exists()
+    if published.count(":") and not published.startswith("0.0.0.0:"):  # bound to one address only
+        return {"port": port, "in_docker": in_docker, "hostname": None, "urls": []}
+    f = ctx.data_dir / "state" / "host_network.json"
+    info = json.loads(f.read_text()) if in_docker and f.exists() else None
+    ips = (info or {}).get("ips", []) if in_docker else lan_ips()
+    return {"port": port, "in_docker": in_docker, "hostname": (info or {}).get("hostname"),
+            "urls": [f"http://{ip}:{port}" for ip in ips]}
 
 
 def _clean(obj):
@@ -76,6 +94,10 @@ def create_app(ctx: Context) -> FastAPI:
         return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
 
     # ------------------------------------------------------------------ meta
+    @app.get("/api/network")
+    def network():
+        return _clean(network_urls(ctx))
+
     @app.get("/api/meta")
     def meta():
         manifest = ctx.data_dir / "raw" / "manifest.jsonl"
@@ -241,6 +263,30 @@ def create_app(ctx: Context) -> FastAPI:
         if not path.exists():
             raise HTTPException(404, "metadata not downloaded – run `infdb-uy anda-metadata`")
         return _records(pd.read_parquet(path))
+
+    @app.get("/api/anda/{idno}/columns")
+    def anda_columns(idno: str, table: str):
+        """Columns of an ingested scope table, with catalogue labels where the name matches."""
+        if idno not in {s["idno"] for s in _anda_studies()}:
+            raise HTTPException(404, "unknown study")
+        path = P("ine_anda", idno, "scope", f"{table}.parquet")
+        if not path.exists() or path.parent.name != "scope":
+            raise HTTPException(404, "table not ingested")
+        cols = q(f"DESCRIBE SELECT * FROM read_parquet('{path}')")["column_name"].tolist()
+        # catalogue file matched at ingest time (by file name or column overlap)
+        tables = ((read_json(R("ine_anda_ingest.json")) or {}).get(idno) or {}).get("tables", {})
+        fid = next((v.get("catalogue_match", {}).get("file_id") for k, v in tables.items() if Path(k).stem == table), None)
+        labels, weights = {}, set()
+        vpath = P("ine_anda", idno, "api_variables.parquet")
+        if vpath.exists():
+            v = pd.read_parquet(vpath)
+            v = pd.concat([v[v["file_id"] == fid], v[v["file_id"] != fid]])  # matched file first
+            for r in v.itertuples():
+                key = str(r.name).lower()
+                labels.setdefault(key, r.label)
+                if str(getattr(r, "is_weight", "") or "").lower() in ("1", "true", "y", "yes"):
+                    weights.add(key)
+        return _clean([{"name": c, "label": labels.get(c.lower()), "is_weight": c.lower() in weights} for c in cols])
 
     @app.get("/api/anda/{idno}/distribution")
     def anda_distribution(idno: str, table: str, variable: str, weight: str = "", by_unit: bool = False):

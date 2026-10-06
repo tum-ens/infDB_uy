@@ -126,7 +126,7 @@ The 100 cédula PDFs scraped from Catastro's web service (padrones `V-AA-1` … 
 
 ## INE ANDA {#ine-anda}
 
-INE distributes the weighted census microdata (July 2026, `URY-INE-CVPH-2023`) and the ECH through its NADA catalogue *ANDA*. The catalogue states access type *direct*: no account is needed. But the download page shows INE's **terms and conditions**, and downloading means accepting them:
+INE distributes its microdata (census 2023 and 2011, household surveys ECH and ENGIH, business register) through its NADA catalogue *ANDA*. The catalogue states access type *direct*: no account is needed. But the download page shows INE's **terms and conditions**, and downloading means accepting them:
 
 - no redistribution
 - scientific and statistical use with aggregate results only
@@ -142,11 +142,12 @@ Accepting is a decision for the person or team using the data. **The pipeline do
     - raw JSON for every call (`raw/ine_anda/<idno>/metadata/`)
     - `api_data_files.parquet`, `api_variables.parquet` (label, format, universe, question, definition) and `api_categories.parquet` (value labels where the catalogue has them)
     - a `README.txt` in the drop folder `data/raw/ine_anda/<idno>/files/` with the download link, the terms summary and the list of expected files
-2. **Manual:** open the catalogue page, accept the terms, download the data files, and put them unchanged into the drop folder. CSV, SPSS (`.sav`), Stata (`.dta`), Parquet and archives (`.zip`, `.rar`, `.7z`, `.tar*`) are accepted.
+2. **Manual:** open the catalogue page, accept the terms, download the data files, and put them unchanged into the drop folder. CSV, SPSS (`.sav`), Stata (`.dta`), Excel (`.xlsx`), Parquet and archives (`.zip`, `.rar`, `.7z`, `.tar*`) are accepted. Which files to take per study, and the exact folders: [Data downloads](data-downloads.md#2-manual-downloads-ine-anda-microdata).
 3. `uv run infdb-uy anda-ingest`:
-    - **Unpacks** archives into `raw/ine_anda/<idno>/extracted/` with libarchive. The originals stay untouched.
+    - **Unpacks** archives into `raw/ine_anda/<idno>/extracted/` with libarchive. The originals stay untouched. Only formats the ingest reads are unpacked (e.g. no `.dbf` copies of `.sav` tables), and files already unpacked with the same size are kept.
     - **Converts** each table to parquet:
-        - Text files: encoding and delimiter are detected, and **all columns stay strings**, so codes with leading zeros survive.
+        - Text files: encoding and delimiter are detected, and **all columns stay strings**, so codes with leading zeros survive. The encoding check reads the whole file: some INE files are plain ASCII for megabytes and only later contain Latin-1 characters (ECH 2025, months 3–6).
+        - Excel files: the first sheet with data, all cells as text. The header is the first row with the most filled cells among the first 50 (the business register has six empty rows above it); the row used is recorded in the report.
         - SPSS/Stata files: values are kept as stored, without applying value formats. Their embedded value labels go to `<table>__value_labels.parquet`.
     - **Validates** columns against the catalogue's variable list for the matching data file (missing, extra, case differences) → report.
     - **Writes a scope subset** to `prepared/ine_anda/<idno>/scope/<table>.parquet`. Records are matched to INE census units intersecting the scope at the finest level present in the file:
@@ -160,6 +161,9 @@ Accepting is a decision for the person or team using the data. **The pipeline do
 
       Matching uses the integer values of the published unit codes. Each record carries `scope_level`, `scope_relation` and `scope_overlap_share` of its census unit. Records whose unit codes are not numeric are counted, not guessed.
     - Writes `reports/ine_anda_ingest.json`.
+    - Tables already converted (Parquet newer than the source file) are not converted again, so the step, which runs on every start, takes seconds once the data is in.
+
+Responses of the ANDA API that are not valid JSON (the server occasionally appends a PHP error page) are not stored and are requested again, up to three times.
 
 ### What the catalogue says (October 2026)
 
@@ -167,6 +171,25 @@ Accepting is a decision for the person or team using the data. **The pipeline do
 |---|---|---|---|
 | `URY-INE-CVPH-2023` (census, July 2026) | F1 `personas_ext_05_2026_extraccion` (147 vars), F2 `viviendas_ext_05_2026_extraccion` (15 vars) | `DEPARTAMENTO`, `LOCALIDAD`, `SECCION`, `SEGMENTO` (+ `_AGRUP`), `BARRIO85`, `CCZ`, `MUNICIPIO_136` | `W` (with `ESTRATO`, `TR`) |
 | `URY-INE-ECH-2023-v01` (ECH 2023) | F3 `base_FIES_2023`, F5 `ECH_implantacion_2023`, F6 `ECH_seguimiento_2023` | `dpto`, `secc`, `ccz`, `barrio` | `w` |
+| `INE-ECH-2025` (ECH 2025) | F8 `ECH_2025_implantacion` (515 vars), F9 `ECH_2025_Seguimiento` (139 vars, monthly), F11 victimization, F13 FIES | F8: `dpto`, `ccz`, `barrio`, `secc`; F9: `dpto`, `ccz`, `barrio` | `W_ANO`, `W_SEM`, `W_TRI` (F8), `W` (F9) |
+| `URY-INE-ENGIH-2016-v04` (household expenditure and income survey 2016–17) | F3 Hogares (147), F4 Personas (418), F5 UPM y Estratos (3), F7 Gastos (19; purchases coded by COICOP in `ARTICULOCODIGO`, `DIVISION`) | `DOMDEPARTAMENTO` only | `peso` |
+| `URY-INE-CPHV-2011-v02.` (census 2011) | Viviendas, Hogares, Personas, Marco 2011, Entorno urbanístico | `DPTO`, `LOC`, `SECC`, `SEGM` (2011 census map); `DEPTO`, `SECCION`, `SEGMENTO`, `ZONA` in the urban-environment file | – |
+| `DM2025.` (business register 2025) | F2 `Mpymes_2025` (18 vars): tax number, name, street address, size class, CIIU activity | `departam`; `Sección` is the CIIU section, not a census section | – |
+
+The config uses only the department level for the census 2011 (its codes refer to the 2011 census map, not the 2023 one used for the scope), ENGIH and the business register.
+
+### Ingest results (October 2026)
+
+| Study | Records | In scope |
+|---|---|---|
+| Census 2023 | 3,151,118 persons, 1,659,044 dwellings | segments of Cordón: 68,695 persons, 41,095 dwellings |
+| ECH 2025 annual | 55,397 persons | sections touching Cordón: 4,164 persons. Only sections 07 and 15 overlap Cordón substantially (59 %, 67 %); the others by less than 5 %. |
+| ECH 2025 monthly | 17,920–21,144 persons per month | Montevideo |
+| ENGIH 2016–17 | 6,889 households, 18,709 persons, 526,580 purchases | Montevideo: 2,382 households |
+| Census 2011 | 3,285,877 persons, 1,166,270 households, 1,389,740 dwellings, 242,004 urban-environment records | Montevideo: 1,318,755 persons (urban-environment file not selected: its department column has another name) |
+| Business register 2025 | 239,842 companies (209,034 micro, 24,020 small, 5,779 medium, 1,009 large) | Montevideo: 110,177 |
+
+Household variables in the census 2023 persons file (`HOG*`) repeat for every person of a household; count them once per `HOGID` for household shares.
 
 The ingest was tested on fixtures in a separate data folder:
 

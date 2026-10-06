@@ -1,12 +1,16 @@
 # Single command:  docker compose up --build
-# Then open http://localhost:8050
+# Then open http://localhost:8050 – or, from another device on the same network, the
+# address printed at startup and shown in the dashboard header.
+# Another port:  PORT=8080 docker compose up --build
+# Only this computer, not the network:  PORT=127.0.0.1:8050 docker compose up --build
 services:
   explorer:
     build: .
     image: infdb-uy:latest
     container_name: infdb-uy
     ports:
-      - "8050:8050"
+      # published on all network interfaces of the host, so it is reachable from the LAN
+      - "${PORT:-8050}:8050"
     volumes:
       # downloaded and prepared data stay on the host (./data), so restarts are fast
       - ./data:/app/data
@@ -16,3 +20,19 @@ services:
     user: "${UID:-1000}:${GID:-1000}"
     environment:
       - HOME=/tmp
+      - PUBLISHED_PORT=${PORT:-8050}
+    depends_on:
+      netinfo:
+        condition: service_completed_successfully
+
+  # Runs once in the host's network to find the host's LAN address (a container cannot see
+  # it otherwise) and writes it to data/state/host_network.json. Always exits successfully.
+  netinfo:
+    build: .
+    image: infdb-uy:latest
+    network_mode: host
+    volumes:
+      - ./data:/app/data
+    user: "${UID:-1000}:${GID:-1000}"
+    command: ["python", "-m", "infdb_uy.netinfo", "/app/data/state/host_network.json"]
+    restart: "no"

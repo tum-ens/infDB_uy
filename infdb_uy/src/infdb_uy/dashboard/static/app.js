@@ -528,7 +528,8 @@ const cen = {
           <div class="kpi"><div class="l">${t("cen.k.incrossing")}</div><div class="v">${fmt(tot("crosses_boundary", "VIV_TOT_23"))}</div></div>
         </div>
         <p class="note" style="margin-top:6px">${t("cen.note")}</p></div>
-      <div><div class="tw" style="max-height:280px"><table id="cen-table"></table></div></div>
+      <details class="card fold" open><summary class="card-h"><h2>${t("cen.zones")}</h2><span>${fmt(zs.length)}</span></summary>
+        <div class="tw" style="max-height:280px;margin-top:6px"><table id="cen-table"></table></div></details>
       <div id="anda"></div>`;
     this.table();
     this.renderAnda(anda);
@@ -553,41 +554,77 @@ const cen = {
   renderAnda(studies) {
     const el = $("anda");
     el.innerHTML = `<h3>${t("anda.title")}</h3>` + studies.map((a, i) => `
-      <div class="card" style="margin-bottom:10px">
-        <div class="card-h"><h2 class="mono" style="font-size:12px">${h(a.idno)}</h2><span>${h(a.metadata?.data_access_type || "")}</span></div>
-        <p style="font-size:12px;margin-bottom:6px">${h(a.metadata?.title || "")}</p>
+      <details class="card fold" style="margin-bottom:10px">
+        <summary class="card-h"><h2 class="mono" style="font-size:12px">${h(a.idno)}</h2>
+          ${a.scope_tables.length ? `<span class="pill">${t("anda.ntables", { n: a.scope_tables.length })}</span>` : `<span class="pill warn">${t("anda.nofiles")}</span>`}</summary>
+        <p style="font-size:12px;margin:6px 0">${h(a.metadata?.title || "")} <span class="note">· ${h(a.metadata?.data_access_type || "")}</span></p>
         ${a.scope_tables.length ? `<p class="note">${t("anda.ingested", { t: h(a.scope_tables.join(", ")) })}</p>` : `
         <div class="flag" style="margin-bottom:8px"><b>${t("anda.nofiles")}</b><span>${t("anda.howto", { link: `<a href="${h(a.download_page)}" target="_blank" rel="noopener">${t("anda.page")}</a>`, folder: `<span class="mono">${h(a.drop_folder)}</span>`, cmd: `<span class="mono">infdb-uy anda-ingest</span>` })}</span></div>`}
-        <div class="toolbar"><input type="search" placeholder="${t("anda.search")}" data-search="${i}"><span class="note" data-count="${i}"></span></div>
-        <div class="tw" style="max-height:220px;margin-top:6px"><table data-vars="${i}"></table></div>
         ${a.scope_tables.length ? `<div class="toolbar" style="margin-top:8px">
             <select data-table="${i}">${a.scope_tables.map((name) => `<option>${h(name)}</option>`).join("")}</select>
-            <input type="search" placeholder="${t("anda.var")}" data-var="${i}" style="width:150px">
-            <input type="search" placeholder="${t("anda.weight")}" data-w="${i}" style="width:110px">
+            <input list="anda-vl-${i}" placeholder="${t("anda.var")}" data-var="${i}" style="width:170px" autocomplete="off">
+            <input list="anda-wl-${i}" placeholder="${t("anda.weight")}" data-w="${i}" style="width:120px" autocomplete="off">
+            <datalist id="anda-vl-${i}"></datalist><datalist id="anda-wl-${i}"></datalist>
             <label class="switch"><input type="checkbox" data-unit="${i}"> ${t("anda.perunit")}</label>
-            <button class="btn primary" data-go="${i}">${t("anda.show")}</button></div>
+            <button class="btn primary" data-go="${i}" disabled>${t("anda.show")}</button></div>
+          <p class="note" data-hint="${i}"></p>
           <div data-dist="${i}" style="margin-top:8px"></div>` : ""}
-      </div>`).join("");
+        <details class="fold sub" style="margin-top:8px"><summary>${t("anda.catalogue")} <span class="note" data-count="${i}"></span></summary>
+          <div class="toolbar" style="margin-top:6px"><input type="search" placeholder="${t("anda.search")}" data-search="${i}"></div>
+          <div class="tw" style="max-height:220px;margin-top:6px"><table data-vars="${i}"></table></div></details>
+      </details>`).join("");
     studies.forEach(async (a, i) => {
       let vars = [];
-      try { vars = await api(`/api/anda/${encodeURIComponent(a.idno)}/variables`); } catch (_) { /* metadata missing */ }
       const tbl = el.querySelector(`[data-vars="${i}"]`), cnt = el.querySelector(`[data-count="${i}"]`);
+      const sel = el.querySelector(`[data-table="${i}"]`), vIn = el.querySelector(`[data-var="${i}"]`), wIn = el.querySelector(`[data-w="${i}"]`);
+      const go = el.querySelector(`[data-go="${i}"]`), hint = el.querySelector(`[data-hint="${i}"]`);
+      let cols = [];
+      // the dropdowns offer only columns that exist in the selected table
+      const check = () => {
+        if (!go) return;
+        const names = new Set(cols.map((c) => c.name));
+        const v = vIn.value.trim(), w = wIn.value.trim();
+        const ok = names.has(v) && (!w || names.has(w));
+        go.disabled = !ok;
+        hint.textContent = !v ? t("anda.pick") : !names.has(v) ? t("anda.notcol", { c: v }) : w && !names.has(w) ? t("anda.notcol", { c: w }) : "";
+      };
+      const loadCols = async () => {
+        if (!sel) return;
+        try { cols = await api(`/api/anda/${encodeURIComponent(a.idno)}/columns`, { table: sel.value }); } catch (_) { cols = []; }
+        const opt = (c) => `<option value="${h(c.name)}">${h(c.label || "")}</option>`;
+        el.querySelector(`#anda-vl-${i}`).innerHTML = cols.map(opt).join("");
+        // INE does not flag weights in its catalogue: likely weight columns are only listed first
+        const isW = (c) => c.is_weight || /^(w|w_.*|peso.*|pond.*)$/i.test(c.name) || /expansor|ponderador/i.test(c.label || "");
+        el.querySelector(`#anda-wl-${i}`).innerHTML = [...cols.filter(isW), ...cols.filter((c) => !isW(c))].map(opt).join("");
+        check();
+      };
+      if (sel) {
+        sel.onchange = loadCols;
+        vIn.oninput = check;
+        wIn.oninput = check;
+        await loadCols();
+      }
+      try { vars = await api(`/api/anda/${encodeURIComponent(a.idno)}/variables`); } catch (_) { /* metadata missing */ }
       const draw = (s) => {
         const rows = vars.filter((v) => !s || `${v.name} ${v.label} ${v.file_name}`.toLowerCase().includes(s.toLowerCase()));
         cnt.textContent = `${fmt(rows.length)} ${t("common.of")} ${fmt(vars.length)}`;
         tbl.innerHTML = `<thead><tr><th>${t("anda.th.name")}</th><th>${t("anda.th.label")}</th><th>${t("anda.th.file")}</th><th class="n">${t("anda.th.cat")}</th></tr></thead><tbody>${rows.slice(0, 200).map((v) =>
-          `<tr><td class="mono">${h(v.name)}</td><td>${h(v.label)}</td><td class="mono">${h(v.file_id)}</td><td class="n">${fmt(v.n_categories)}</td></tr>`).join("")}</tbody>`;
+          `<tr class="click" data-name="${h(v.name)}"><td class="mono">${h(v.name)}</td><td>${h(v.label)}</td><td class="mono">${h(v.file_id)}</td><td class="n">${fmt(v.n_categories)}</td></tr>`).join("")}</tbody>`;
+        // clicking a catalogue row selects it (matched case-insensitively against the table's columns)
+        if (vIn) tbl.querySelectorAll("tbody tr").forEach((tr) => (tr.onclick = () => {
+          const c = cols.find((x) => x.name.toLowerCase() === tr.dataset.name.toLowerCase());
+          vIn.value = c ? c.name : tr.dataset.name;
+          check();
+        }));
       };
       draw("");
       el.querySelector(`[data-search="${i}"]`).oninput = (e) => draw(e.target.value);
-      const go = el.querySelector(`[data-go="${i}"]`);
       if (go) go.onclick = async () => {
         const out = el.querySelector(`[data-dist="${i}"]`);
         out.innerHTML = `<p class="loading">${t("anda.computing")}</p>`;
         try {
           const rows = await api(`/api/anda/${encodeURIComponent(a.idno)}/distribution`, {
-            table: el.querySelector(`[data-table="${i}"]`).value, variable: el.querySelector(`[data-var="${i}"]`).value.trim(),
-            weight: el.querySelector(`[data-w="${i}"]`).value.trim(), by_unit: el.querySelector(`[data-unit="${i}"]`).checked });
+            table: sel.value, variable: vIn.value.trim(), weight: wIn.value.trim(), by_unit: el.querySelector(`[data-unit="${i}"]`).checked });
           out.innerHTML = `<div class="tw" style="max-height:300px"><table><thead><tr><th>${t("anda.th.unit")}</th><th>${t("anda.th.code")}</th><th>${t("anda.th.label")}</th><th class="n">${t("anda.th.records")}</th><th class="n">${t("anda.th.weighted")}</th></tr></thead><tbody>${rows.map((r) =>
             `<tr><td class="mono">${h(r.unit)}</td><td class="mono">${h(r.code)}</td><td>${r.label ? h(r.label) : `<i class="note">${t("anda.nolabel")}</i>`}</td><td class="n">${fmt(r.records)}</td><td class="n">${r.weighted === null ? "–" : fmt1(r.weighted)}</td></tr>`).join("")}</tbody></table></div>
             <p class="note">${t("anda.note")}</p>`;
@@ -683,6 +720,21 @@ async function showDataset(d) {
 }
 
 // ------------------------------------------------------------------ boot
+// Address under which other devices in the same network reach the dashboard (click = copy)
+api("/api/network").then((net) => {
+  const url = net.urls?.[0];
+  if (!url) return;
+  const b = $("net");
+  b.textContent = `${t("net.label")} ${url.replace("http://", "")}`;
+  b.title = `${t("net.title")}\n${net.urls.join("\n")}`;
+  b.hidden = false;
+  b.onclick = async () => {
+    try { await navigator.clipboard.writeText(url); } catch (_) { prompt(t("net.title"), url); return; }
+    b.textContent = t("net.copied");
+    setTimeout(() => (b.textContent = `${t("net.label")} ${url.replace("http://", "")}`), 1500);
+  };
+}).catch(() => { /* not shown */ });
+
 (async () => {
   try {
     META = await api("/api/meta");

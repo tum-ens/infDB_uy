@@ -73,12 +73,20 @@ def run_pipeline(ctx: Context, steps: list[str], *, force: bool, skip_done: bool
 def serve(ctx: Context, host: str, port: int) -> None:
     import uvicorn
 
-    from .dashboard.app import create_app
+    from .dashboard.app import create_app, network_urls
 
     if not (ctx.data_dir / "dashboard" / "build.json").exists():
         log.info("Dashboard bundle missing – building it")
         _dashboard(ctx)
-    log.info("Dashboard on http://%s:%d  (Ctrl+C to stop)", "localhost" if host in ("0.0.0.0", "127.0.0.1") else host, port)
+    if host in ("0.0.0.0", "::"):  # listening on all interfaces: also show the LAN address
+        net = network_urls(ctx, port)
+        log.info("Dashboard on http://localhost:%d  (Ctrl+C to stop)", net["port"])
+        if net["urls"]:
+            log.info("From another device in the same network: %s", "  ".join(net["urls"]))
+        else:
+            log.info("The network address of this computer could not be determined.")
+    else:
+        log.info("Dashboard on http://%s:%d  (Ctrl+C to stop)", "localhost" if host == "127.0.0.1" else host, port)
     uvicorn.run(create_app(ctx), host=host, port=port, log_level="warning")
 
 

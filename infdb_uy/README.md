@@ -18,7 +18,7 @@ cd infDB_uy/infdb_uy
 docker compose up --build
 ```
 
-Then open **<http://localhost:8050>**.
+Then open **<http://localhost:8050>**. Other devices in the same network can open it too: the address is printed at startup and shown in the dashboard header (button "Network: …"). To keep it on this computer only, start with `PORT=127.0.0.1:8050 docker compose up --build`; for another port, `PORT=8080 docker compose up --build`.
 
 The first start takes about 10 minutes. It builds the image and downloads about 1.5 GB (cadastre 200 MB, INE 60 MB, LiDAR 1.2 GB), then prepares the data. Progress shows in the terminal. Later starts reuse `./data` and are up within seconds. Stop with `Ctrl+C`. Remove everything with `docker compose down` and by deleting `data/` except `data/README.md`.
 
@@ -43,13 +43,13 @@ The API behind the dashboard is documented at <http://localhost:8050/api/docs>.
 - `data/prepared/`: lossless copies for the scope. Official column names, official code labels next to the codes, keys, EPSG:32721. No row dropped, corrected or imputed.
 - `data/reports/qa.md`: what looks unusual (years 0, codes without labels, ...), described but not changed.
 
-**INE ANDA microdata** (weighted census 2023, household survey) are only available after accepting INE's terms of use on their website. The pipeline prepares the metadata and a drop folder. To add the microdata:
+**INE ANDA microdata** (census 2023 and 2011, household surveys ECH and ENGIH, business register) are only available after accepting INE's terms of use on their website. The pipeline prepares the metadata and a drop folder per study. To add the microdata:
 
 1. Download the files after accepting the terms.
-2. Put them into `data/raw/ine_anda/<idno>/files/`.
+2. Put them, unchanged, into `data/raw/ine_anda/<idno>/files/`.
 3. Restart.
 
-See [docs/pipeline.md](docs/pipeline.md#ine-anda). These files must not be committed or shared.
+Which files to download for each study, and the exact folder for each, are listed in [docs/data-downloads.md](docs/data-downloads.md). These files must not be committed or shared.
 
 ## Commands
 
@@ -85,6 +85,7 @@ The area and the sources are configured in `config/pilot-cordon.yml`.
 | [Summary (TL;DR)](docs/tldr.md) | Two pages: differences to InfDB, checked results, open decisions |
 | [Overview](docs/index.md) | Purpose, key findings, recommended path |
 | [Data sources](docs/data-sources.md) | Every source, with access status, format, keys and licence |
+| [Data downloads](docs/data-downloads.md) | Link, file name and destination folder of every file, automatic and manual (INE ANDA) |
 | [Comparison with InfDB](docs/infdb-comparison.md) | Stage-by-stage mapping between German and Uruguayan inputs |
 | [Required changes](docs/required-changes.md) | What to change in InfDB, ordered along the pipeline |
 | [Pilot – Cordón](docs/pilot-cordon.md) | Scope, area profile, step-by-step workflow and checks |

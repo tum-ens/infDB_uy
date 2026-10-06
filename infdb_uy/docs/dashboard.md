@@ -48,6 +48,7 @@ The interface is available in English, German and Spanish. The selector is in th
   - The illustrative height is stored as `vis_floors` and `vis_height_m` in `data/dashboard/parcelas.geojson` only. It is not part of the prepared data.
   - It will be replaced by LiDAR-derived footprints and heights once that step exists (see [Required changes §4](required-changes.md#4-building-geometry-from-lidar-l)).
 - **Census zones crossing the scope** are shown and counted whole. The overlap share is an area share, not a population share, and no attribution to the scope is made.
+- **ANDA panel.** One collapsible box per study. Variable and weight are chosen from searchable lists of the columns of the selected table (type a name or label to filter); *Show* is enabled only for a valid column. Likely weight columns (`W…`, `peso`, labels "expansor"/"ponderador") are listed first, because INE does not flag weights in its catalogue. Clicking a row of the variable catalogue selects it.
 - **ANDA distributions** count records per code. *Weighted* sums the chosen weight column. Labels come from the ANDA catalogue, otherwise from INE's 2023 dictionary. The table states which source was used.
 
 ## Architecture
@@ -60,7 +61,7 @@ infdb-uy serve       FastAPI + DuckDB  →  /api/*  +  static single-page app
 | File | Role |
 |---|---|
 | `src/infdb_uy/dashboard/build.py` | Builds the web layers and parcel attributes |
-| `src/infdb_uy/dashboard/app.py` | API. Endpoints: `/api/meta`, `/api/geo/{layer}`, `/api/cadastre/summary`, `/api/cadastre/parcel/{key}`, `/api/lidar`, `/api/anda*`, `/api/datasets*`. OpenAPI at `/api/docs`. |
+| `src/infdb_uy/dashboard/app.py` | API. Endpoints: `/api/meta`, `/api/geo/{layer}`, `/api/cadastre/summary`, `/api/cadastre/parcel/{key}`, `/api/lidar`, `/api/anda*` (incl. `/api/anda/{idno}/columns`), `/api/network`, `/api/datasets*`. OpenAPI at `/api/docs`. |
 | `src/infdb_uy/dashboard/static/` | `index.html`, `app.js`, `style.css`, `i18n.js` (interface texts EN/DE/ES). MapLibre GL JS is bundled in `vendor/`, so no CDN is needed for the map library. |
 
 The basemap uses the public OpenStreetMap tile server, drawn in greyscale. Without internet the data layers still display, but the basemap does not. The OSM tile policy allows light interactive use like this. For heavier use, configure another tile source in `app.js` (`baseStyle`).
@@ -72,4 +73,11 @@ The basemap uses the public OpenStreetMap tile server, drawn in greyscale. Witho
 1. It runs every pipeline step. Steps that already completed with the same configuration are skipped (markers in `data/state/`).
 2. It serves the dashboard on port 8050.
 
-`./data` and `./config` are mounted from the host, so data persists across restarts and the config can be edited without rebuilding. To add INE ANDA microdata later, drop the files into `data/raw/ine_anda/<idno>/files/` and restart. `anda-ingest`, `qa` and `dashboard` always run.
+**Network access.** The port is published on all network interfaces of the host, so other devices in the same network can open the dashboard. A container cannot see the host's network address, so the compose file first runs a one-off service `netinfo` in the host's network (`network_mode: host`). It writes the host's address to `data/state/host_network.json` and always exits successfully. The address is printed at startup ("From another device in the same network: http://…:8050") and shown in the header as a button "Network: …" that copies it. Only the address of the default-route interface is shown; Docker's own networks are skipped. On Docker Desktop (macOS, Windows) the host network is a VM, so no address is shown there.
+
+- Another port: `PORT=8080 docker compose up --build`
+- This computer only, not the network: `PORT=127.0.0.1:8050 docker compose up --build`
+
+Anyone in the network can then see everything the dashboard shows, including ingested ANDA microdata through the Data tab and the API. Use the local-only setting on untrusted networks; INE's terms do not allow sharing the microdata.
+
+`./data` and `./config` are mounted from the host, so data persists across restarts and the config can be edited without rebuilding. To add INE ANDA microdata later, drop the files into `data/raw/ine_anda/<idno>/files/` and restart (file list per study: [Data downloads](data-downloads.md)). `anda-ingest`, `qa` and `dashboard` always run.

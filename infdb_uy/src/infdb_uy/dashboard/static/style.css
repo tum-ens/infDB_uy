@@ -175,3 +175,12 @@ input[type="search"], input[type="number"], select { font: inherit; font-size: 1
   .dslist { max-height: 40vh; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+/* collapsible boxes (ANDA studies, census zones) */
+details.fold > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::before { content: "▸"; color: var(--ink-3); font-size: 11px; width: 10px; flex: none; }
+details.fold[open] > summary::before { content: "▾"; }
+details.fold > summary.card-h { margin-bottom: 0; }
+details.fold > summary.card-h > :last-child { margin-left: auto; }
+details.fold.sub > summary { font-size: 12px; color: var(--ink-3); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }

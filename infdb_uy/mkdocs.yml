@@ -21,6 +21,7 @@ nav:
       - Español: tldr.es.md
   - Overview: index.md
   - Data sources: data-sources.md
+  - Data downloads (links, files, destinations): data-downloads.md
   - Comparison with InfDB: infdb-comparison.md
   - Required changes: required-changes.md
   - Pilot – Cordón (Montevideo): pilot-cordon.md

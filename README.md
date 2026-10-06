@@ -15,6 +15,7 @@ The InfDB adaptation itself is **not** implemented yet.
 | [`infdb_uy/`](infdb_uy/) | Code, configuration, Docker setup and documentation |
 | [`infdb_uy/docs/tldr.md`](infdb_uy/docs/tldr.md) | Two-page summary, also in [German](infdb_uy/docs/tldr.de.md) and [Spanish](infdb_uy/docs/tldr.es.md), with PDFs |
 | [`infdb_uy/README.md`](infdb_uy/README.md) | Detailed usage |
+| [`infdb_uy/docs/data-downloads.md`](infdb_uy/docs/data-downloads.md) | Every data file: link, file name, destination folder (incl. the manual INE downloads) |
 
 ## Start
 
@@ -24,7 +25,7 @@ cd infDB_uy/infdb_uy
 docker compose up --build      # first run ≈ 10 min, downloads ≈ 1.5 GB
 ```
 
-Then open <http://localhost:8050>. The interface is available in English, German and Spanish.
+Then open <http://localhost:8050>. Other devices in the same network can use the address shown at startup and in the dashboard header. The interface is available in English, German and Spanish.
 
 ## Key points
 
@@ -53,7 +54,8 @@ Then open <http://localhost:8050>. The interface is available in English, German
 
 **Data**
 
-- [ ] Accept INE's ANDA terms and download the weighted census 2023 microdata (and ECH). The ingest pipeline is ready. Then clarify the `*_AGRUP` variables and `BARRIO85` codes.
+- [x] Download INE ANDA microdata (census 2023 and 2011, ECH 2025, ENGIH 2016–17, business register 2025) and ingest them. Each user downloads them separately after accepting INE's terms; see [`infdb_uy/docs/data-downloads.md`](infdb_uy/docs/data-downloads.md).
+- [ ] Clarify the census `*_AGRUP` variables and `BARRIO85` codes, and get INE's barrio code list to select ECH records by barrio instead of census section.
 - [ ] Ask the Intendencia de Montevideo about:
     - the LiDAR CRS (EPSG:5382 vs. 32721)
     - the undocumented point classes (11, 13, 15, 24, 105, 120, 121)

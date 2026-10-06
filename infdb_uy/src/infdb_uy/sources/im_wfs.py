@@ -73,13 +73,20 @@ def fetch_layer(ctx: Context, key: str, *, bbox=None, cql=None) -> gpd.GeoDataFr
     raw_dir = ctx.raw(SOURCE, key, "x").parent
     query = {"layer": layer, "bbox": list(bbox) if bbox is not None else None, "cql": cql, "page_size": size}
     query_file = raw_dir / "query.json"
+    hits_file = raw_dir / "hits.json"
     cached = sorted(raw_dir.glob("page_*.geojson"))
-    reuse = cached and not ctx.refresh and query_file.exists() and json.loads(query_file.read_text()) == query
-    if not reuse:
-        for f in cached:
-            f.unlink()
+    reuse = (cached and not ctx.refresh and hits_file.exists() and query_file.exists()
+             and json.loads(query_file.read_text()) == query)
+    if reuse:
+        # compare cached pages with the count from the time they were downloaded; the live
+        # layer keeps changing (e.g. new building permits)
+        matched_total = json.loads(hits_file.read_text())["number_matched"]
+    else:
+        for f in [*cached, hits_file]:
+            f.unlink(missing_ok=True)
         write_json(query_file, query)
-    matched_total = _hits(ctx, layer, bbox, cql)
+        matched_total = _hits(ctx, layer, bbox, cql)
+        write_json(hits_file, {"number_matched": matched_total})
     paged = matched_total > size
     sort_by = cfg.get("sort_by", "gid") if paged else None  # paging needs a stable order
     frames, start, page = [], 0, 0
